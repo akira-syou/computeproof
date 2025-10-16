@@ -1,2 +1,17 @@
 
 backend/.env
+
+# Node modules
+frontend/node_modules/
+backend/node_modules/
+
+# Vite build output
+frontend/dist/
+
+# Docs build
+docs/
+
+# Misc
+.DS_Store
+npm-debug.log*
+yarn-error.log*
