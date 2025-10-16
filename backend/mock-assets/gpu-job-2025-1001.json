@@ -1,0 +1,15 @@
+{
+  "jobId": "gpu-job-2025-1001",
+  "jobType": "training",
+  "submittedBy": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "gpuRequirement": {
+    "type": "NVIDIA-A100",
+    "count": 4,
+    "memory": "80GB"
+  },
+  "estimatedDuration": 3600,
+  "dockerImage": "pytorch/pytorch:2.0-cuda11.7",
+  "priority": "high",
+  "timestamp": 1760636865,
+  "description": "Mock asset file for gpu-job-2025-1001"
+}
