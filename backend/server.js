@@ -1,6 +1,9 @@
 // server.js - ComputeProof Backend API
 // GPU Job Receipt Pipeline with Numbers Protocol
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -19,6 +22,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Middleware to extract and attach the CAPTURE token from request headers
+app.use((req, res, next) => {
+  // Check for token in X-Capture-Token header, fall back to config
+  const headerToken = req.headers['x-capture-token'];
+  req.captureToken = headerToken || CONFIG.CAPTURE_TOKEN;
+  next();
+});
+
 // Configuration
 const CONFIG = {
   CAPTURE_TOKEN: process.env.CAPTURE_TOKEN || 'YOUR_CAPTURE_TOKEN_HERE',
@@ -36,6 +47,12 @@ CONFIG.ASSET_FILE_BASE_URL = process.env.ASSET_FILE_BASE_URL || 'https://example
 // useful for offline testing. Enable by setting MOCK_NUMBERS_API=true.
 const MOCK = (process.env.MOCK_NUMBERS_API === 'true');
 
+console.log('Configuration:');
+console.log(`  MOCK_NUMBERS_API: ${MOCK}`);
+console.log(`  CAPTURE_TOKEN: ${CONFIG.CAPTURE_TOKEN ? '***' + CONFIG.CAPTURE_TOKEN.slice(-4) : 'NOT SET'}`);
+console.log(`  API_BASE: ${CONFIG.API_BASE}`);
+console.log('');
+
 // Helper: Generate SHA256 hash
 function generateSHA256(data) {
   return crypto
@@ -45,7 +62,7 @@ function generateSHA256(data) {
 }
 
 // Helper: Commit event to blockchain
-async function commitEvent(jobNid, eventData, commitMessage) {
+async function commitEvent(jobNid, eventData, commitMessage, captureToken) {
   if (MOCK) {
     // Return a fake commit result
     return {
@@ -54,16 +71,18 @@ async function commitEvent(jobNid, eventData, commitMessage) {
     };
   }
 
+  console.log(`Committing event: ${eventData.eventType} for NID: ${jobNid}`);
+
   const response = await fetch(CONFIG.COMMIT_API, {
     method: 'POST',
     headers: {
-      'Authorization': `token ${CONFIG.CAPTURE_TOKEN}`,
+      'Authorization': `token ${captureToken}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       encodingFormat: 'application/json',
       assetCid: jobNid,
-      assetTimestampCreated: eventData.timestamp,
+      assetTimestampCreated: new Date(eventData.timestamp * 1000).toISOString(),
       assetCreator: eventData.executor || 'system',
       assetSha256: generateSHA256(eventData),
       abstract: `Event: ${eventData.eventType}`,
@@ -77,7 +96,9 @@ async function commitEvent(jobNid, eventData, commitMessage) {
     throw new Error(`Failed to commit event: ${error}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  console.log(`✓ Committed: ${eventData.eventType}, TX: ${result.txHash || result.transaction_hash || 'pending'}`);
+  return result;
 }
 
 // 1. Submit GPU Job
@@ -107,32 +128,47 @@ app.post('/api/jobs/submit', async (req, res) => {
       timestamp: Math.floor(Date.now() / 1000)
     };
 
-    // Register job as asset. Use a valid HTTPS asset_file URL pointing to
-    // mock-up data so the Numbers API validation accepts it. The actual
-    // content can be stored externally; for testing we provide a placeholder
-    // URL built from CONFIG.ASSET_FILE_BASE_URL.
-  const assetFileUrl = `${CONFIG.ASSET_FILE_BASE_URL}/${encodeURIComponent(jobId)}.json`;
-  console.log(`Registering asset with asset_file URL: ${assetFileUrl}`);
+    // Register job as asset
+    let result;
+    if (MOCK) {
+      // Mock mode: generate a fake NID
+      result = {
+        nid: `bafybei${generateSHA256({ jobId, timestamp: Date.now() }).substring(0, 45)}`
+      };
+      console.log(`[MOCK MODE] Generated NID: ${result.nid}`);
+    } else {
+      // Real API mode
+      // For hackathon demo, use a publicly accessible placeholder image
+      // In production, you would host your actual job data files
+      const assetFileUrl = 'https://picsum.photos/200/300';
+      
+      console.log(`Registering asset with asset_file URL: ${assetFileUrl}`);
 
-  const response = await fetch(`${CONFIG.API_BASE}/assets/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `token ${CONFIG.CAPTURE_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        asset_file: assetFileUrl,
-        abstract: `GPU Job: ${jobId}`,
-        custom_fields: jobData
-      })
-    });
+      const response = await fetch(`${CONFIG.API_BASE}/assets/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${req.captureToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          asset_file: assetFileUrl,
+          abstract: `GPU Job: ${jobId}`,
+          custom_fields: jobData
+        })
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to register job: ${error}`);
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('Asset registration failed:', error);
+        throw new Error(`Failed to register job: ${error}`);
+      }
+
+      result = await response.json();
+      console.log('✓ Asset registration response:', JSON.stringify(result, null, 2));
+      console.log(`✓ Asset registered: CID=${result.cid}`);
+      // Numbers API returns 'cid', not 'nid', so we normalize it
+      result.nid = result.cid;
     }
-
-    const result = await response.json();
 
     // Commit JobSubmitted event
     const eventData = {
@@ -147,15 +183,32 @@ app.post('/api/jobs/submit', async (req, res) => {
       executor: jobData.submittedBy
     };
 
-    const commitResult = await commitEvent(result.nid, eventData, 'Job submitted to queue');
+    console.log(`Committing JobSubmitted event for NID: ${result.nid}`);
+    const commitResult = await commitEvent(result.nid, eventData, 'Job submitted to queue', req.captureToken);
+
+    const txHash = commitResult.txHash || commitResult.transaction_hash || commitResult.cid || 'pending';
+
+    // Register job in memory
+    registerJob(jobId, result.nid, {
+      jobType: jobData.jobType,
+      submittedBy: jobData.submittedBy,
+      gpuRequirement: jobData.gpuRequirement,
+      status: 'submitted',
+      events: [{
+        eventType: 'JobSubmitted',
+        txHash: txHash,
+        timestamp: jobData.timestamp
+      }]
+    });
 
     res.json({
       success: true,
       jobNid: result.nid,
       jobId,
-      txHash: commitResult.txHash,
-      explorerUrl: `https://mainnet.num.network/tx/${commitResult.txHash}`,
-      message: 'Job submitted successfully'
+      txHash: txHash,
+      explorerUrl: `https://mainnet.num.network/tx/${txHash}`,
+      assetUrl: `https://verify.numbersprotocol.io/asset-profile/${result.nid}`,
+      message: 'Job submitted successfully and committed to blockchain'
     });
 
   } catch (error) {
@@ -196,8 +249,21 @@ app.post('/api/jobs/:nid/scheduled', async (req, res) => {
     const result = await commitEvent(
       nid,
       eventData,
-      `Job scheduled on ${eventData.scheduledNode}`
+      `Job scheduled on ${eventData.scheduledNode}`,
+      req.captureToken
     );
+
+    // Update job in registry
+    const job = jobRegistry.get(nid);
+    if (job) {
+      job.events.push({
+        eventType: 'JobScheduled',
+        txHash: result.txHash || result.transaction_hash || result.cid || 'pending',
+        timestamp: eventData.timestamp,
+        scheduledNode: eventData.scheduledNode
+      });
+      job.status = 'scheduled';
+    }
 
     res.json({
       success: true,
@@ -244,8 +310,21 @@ app.post('/api/jobs/:nid/started', async (req, res) => {
     const result = await commitEvent(
       nid,
       eventData,
-      'Job execution started'
+      'Job execution started',
+      req.captureToken
     );
+
+    // Update job in registry
+    const job = jobRegistry.get(nid);
+    if (job) {
+      job.events.push({
+        eventType: 'JobStarted',
+        txHash: result.txHash || result.transaction_hash || result.cid || 'pending',
+        timestamp: eventData.timestamp,
+        executorNode: eventData.executorNode
+      });
+      job.status = 'running';
+    }
 
     res.json({
       success: true,
@@ -290,8 +369,22 @@ app.post('/api/jobs/:nid/progress', async (req, res) => {
     const result = await commitEvent(
       nid,
       eventData,
-      `Progress checkpoint at ${eventData.progress}%`
+      `Progress checkpoint at ${eventData.progress}%`,
+      req.captureToken
     );
+
+    // Update job in registry
+    const job = jobRegistry.get(nid);
+    if (job) {
+      job.events.push({
+        eventType: 'JobProgressUpdate',
+        txHash: result.txHash || result.transaction_hash || result.cid || 'pending',
+        timestamp: eventData.timestamp,
+        progress: eventData.progress,
+        currentEpoch: eventData.currentEpoch,
+        totalEpochs: eventData.totalEpochs
+      });
+    }
 
     res.json({
       success: true,
@@ -342,8 +435,23 @@ app.post('/api/jobs/:nid/completed', async (req, res) => {
     const result = await commitEvent(
       nid,
       eventData,
-      'Job completed successfully'
+      'Job completed successfully',
+      req.captureToken
     );
+
+    // Update job in registry
+    const job = jobRegistry.get(nid);
+    if (job) {
+      job.events.push({
+        eventType: 'JobCompleted',
+        txHash: result.txHash || result.transaction_hash || result.cid || 'pending',
+        timestamp: eventData.timestamp,
+        completionStatus: eventData.completionStatus,
+        totalDuration: eventData.totalDuration,
+        gpuHoursUsed: eventData.gpuHoursUsed
+      });
+      job.status = 'completed';
+    }
 
     res.json({
       success: true,
@@ -389,7 +497,8 @@ app.post('/api/jobs/:nid/failed', async (req, res) => {
     const result = await commitEvent(
       nid,
       eventData,
-      `Job failed: ${eventData.errorCode}`
+      `Job failed: ${eventData.errorCode}`,
+      req.captureToken
     );
 
     res.json({
@@ -412,54 +521,29 @@ app.get('/api/jobs/:nid/history', async (req, res) => {
   try {
     const { nid } = req.params;
 
-    const response = await fetch(
-      `${CONFIG.API_BASE}/assets/${nid}/history/`,
-      {
-        headers: {
-          'Authorization': `token ${CONFIG.CAPTURE_TOKEN}`
-        }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch job history');
+    // First, get the job from our registry
+    const job = jobRegistry.get(nid);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found in registry'
+      });
     }
 
-    const data = await response.json();
-
-    // Parse commits and sort by timestamp
-    const events = data.commits
-      .map(commit => {
-        try {
-          return JSON.parse(commit.custom);
-        } catch (e) {
-          return null;
-        }
-      })
-      .filter(e => e !== null)
-      .sort((a, b) => a.timestamp - b.timestamp);
-
-    // Calculate metrics
-    const submitted = events.find(e => e.eventType === 'JobSubmitted');
-    const completed = events.find(e => e.eventType === 'JobCompleted');
-    
-    let metrics = null;
-    if (submitted && completed) {
-      const duration = completed.timestamp - submitted.timestamp;
-      metrics = {
-        duration: duration,
-        gpuHoursUsed: completed.gpuHoursUsed || duration / 3600,
-        cost: (completed.gpuHoursUsed || duration / 3600) * 2.5, // $2.5/GPU-hour
-        efficiency: completed.completionStatus === 'success' ? 100 : 0
-      };
-    }
-
+    // Return job data with events from registry
+    // We use the in-memory events instead of fetching from blockchain
+    // because they're faster and we already have them
     res.json({
       success: true,
+      jobId: job.jobId,
       jobNid: nid,
-      events,
-      metrics,
-      totalEvents: events.length
+      jobType: job.jobType,
+      status: job.status,
+      submittedBy: job.submittedBy,
+      gpuRequirement: job.gpuRequirement,
+      events: job.events || [],
+      totalEvents: (job.events || []).length,
+      createdAt: job.createdAt
     });
 
   } catch (error) {
@@ -472,23 +556,17 @@ app.get('/api/jobs/:nid/history', async (req, res) => {
 });
 
 // 8. List All Jobs (for dashboard)
+const jobRegistry = new Map(); // Store jobs in memory for demo
+
 app.get('/api/jobs', async (req, res) => {
   try {
-    // In a real implementation, you'd query your database
-    // For demo purposes, return sample data
+    // Return all registered jobs
+    const jobs = Array.from(jobRegistry.values());
+    
     res.json({
       success: true,
-      jobs: [
-        {
-          jobId: 'gpu-job-2025-1001',
-          jobNid: 'bafybei...',
-          status: 'completed',
-          type: 'training',
-          gpuHours: 2.5,
-          cost: 6.25
-        }
-      ],
-      message: 'Use individual job endpoints for full history'
+      jobs: jobs,
+      count: jobs.length
     });
   } catch (error) {
     console.error('Error listing jobs:', error);
@@ -498,6 +576,17 @@ app.get('/api/jobs', async (req, res) => {
     });
   }
 });
+
+// Store job when submitted
+function registerJob(jobId, jobNid, jobData) {
+  jobRegistry.set(jobNid, {
+    jobId,
+    jobNid,
+    ...jobData,
+    events: [],
+    createdAt: new Date().toISOString()
+  });
+}
 
 // Health check
 app.get('/health', (req, res) => {

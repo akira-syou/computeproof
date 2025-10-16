@@ -16,15 +16,16 @@ GPU compute marketplaces and AI training workflows lack verifiable proof of:
 
 ## 💡 Solution
 
-ComputeProof creates an **immutable GPU job receipt pipeline** where every compute task—from submission to completion—is recorded as ERC-7053 commits on Numbers Mainnet. Perfect for AI training verification, distributed computing marketplaces, and compliance auditing.
+ComputeProof creates an **immutable GPU job receipt pipeline** where every compute task—from submission to completion—is recorded as ERC-7053 commits on Numbers Mainnet. Each GPU job gets a unique blockchain asset (NID) with a complete, verifiable execution history.
 
 ### Key Features
 
 ✅ **Complete Lifecycle Tracking** - Submit → Schedule → Start → Progress → Complete  
-✅ **Verifiable Receipts** - Every state transition recorded on-chain  
-✅ **Resource Metrics** - GPU hours, costs, and utilization tracked  
-✅ **Output Provenance** - Link trained models to compute resources used  
-✅ **Billing Transparency** - Immutable records for dispute resolution  
+✅ **Verifiable Receipts** - Every state transition recorded on-chain with transaction hashes  
+✅ **Resource Metrics** - GPU hours, costs, and utilization tracked immutably  
+✅ **Terminal-Style Dashboard** - Beautiful execution logs just like your CI/CD pipelines  
+✅ **Blockchain Verification** - All events viewable on Numbers Protocol and mainnet explorer  
+✅ **Real-Time Updates** - Dashboard auto-refreshes to show job status changes  
 
 ---
 
@@ -38,41 +39,70 @@ ComputeProof creates an **immutable GPU job receipt pipeline** where every compu
                     │ Job State Changes
                     ▼
          ┌──────────────────────┐
-         │  Receipt Service API  │
-         │  (Node.js + Express)  │
+         │  ComputeProof API    │
+         │  (Node.js + Express) │
+         │  Port 3002           │
          └──────────┬────────────┘
                     │
         ┌───────────▼───────────┐
         │   Numbers Mainnet     │
         │  ERC-7053 Commits     │
+        │  + Asset Registration │
         └───────────┬───────────┘
                     │
          ┌──────────▼──────────┐
-         │   Audit Dashboard    │
-         │  (React + Charts)    │
+         │  React Dashboard     │
+         │  (Vite + Tailwind)   │
+         │  Port 8000           │
          └─────────────────────┘
 ```
+
+### Data Flow
+
+1. **Job Submission** → Creates blockchain asset with unique NID
+2. **Lifecycle Events** → Each event commits metadata to the asset
+3. **Dashboard Display** → Real-time view of jobs with terminal-style logs
+4. **Verification** → Click any transaction hash to view on blockchain explorer
 
 ---
 
 ## 📋 Event Types
 
 ### 1. JobSubmitted
-Initial job registration with GPU requirements, docker image, and estimated duration.
+Initial job registration creates a blockchain asset with:
+- Job ID and type (training, inference, etc.)
+- GPU requirements (type, count, memory)
+- Submitter address and timestamp
+- **Result:** Unique NID (blockchain asset ID) + transaction hash
 
 ### 2. JobScheduled  
-Assignment to specific GPU node with specs and queue position.
+Assignment to specific GPU node:
+- Scheduled node identifier
+- Queue position and estimated start time
+- **Result:** Transaction hash for scheduling event
 
 ### 3. JobStarted
-Execution begins with container ID, process ID, and GPU allocation.
+Execution begins with:
+- Executor node ID
+- Container ID and process ID
+- GPU utilization metrics
+- **Result:** Transaction hash for start event
 
 ### 4. JobProgressUpdate (Optional)
-Periodic checkpoints during execution with progress percentage and metrics.
+Periodic checkpoints during execution:
+- Progress percentage (0-100%)
+- Current epoch / total epochs
+- GPU utilization and memory usage
+- **Result:** Transaction hash for each update
 
 ### 5. JobCompleted
-Success status with output artifacts, final metrics, and GPU hours used.
+Successful completion with:
+- Final status (success/failure)
+- Total duration and GPU hours used
+- Output artifacts and final metrics
+- **Result:** Transaction hash for completion event
 
-### 6. JobFailed
+### 6. JobFailed (Future)
 Error logging with error code, stack trace, and retry information.
 
 ---
@@ -82,12 +112,12 @@ Error logging with error code, stack trace, and retry information.
 | Component | Technology |
 |-----------|------------|
 | **Blockchain** | Numbers Mainnet (Avalanche Subnet) |
-| **Standard** | ERC-7053 |
-| **SDK** | Capture SDK |
-| **Frontend** | React 18 + TailwindCSS |
+| **Standard** | ERC-7053 Blockchain Commits |
+| **API Integration** | Numbers Capture API |
+| **Frontend** | React 18 + Vite + TailwindCSS |
 | **Backend** | Node.js + Express |
-| **Storage** | IPFS (via Capture API) |
-| **Monitoring** | Job state watchers |
+| **Storage** | IPFS (via Numbers Protocol) |
+| **Real-time Updates** | Auto-refresh polling (10s intervals) |
 
 ---
 
@@ -96,78 +126,123 @@ Error logging with error code, stack trace, and retry information.
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Capture account with API token ([Register here](https://captureapp.xyz))
-- NUM tokens for gas (contact Numbers team)
+- **Capture account with API token** ([Register here](https://captureapp.xyz))
+- NUM tokens for gas (provided by Numbers Protocol team)
 
-### Installation
+### Quick Start
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/computeproof.git
+git clone https://github.com/akira-syou/computeproof.git
 cd computeproof
 ```
 
-2. **Install dependencies**
-```bash
-# Backend
-cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
-```
-
-3. **Configure environment**
-```bash
-# In backend/.env
-CAPTURE_TOKEN=your_capture_token_here
-PORT=3002
-
-# In frontend/.env
-REACT_APP_API_URL=http://localhost:3002
-```
-
-4. **Get your Capture Token**
+2. **Get your Capture Token**
 - Go to [Capture Dashboard](https://captureapp.xyz)
 - Navigate to **Dashboard → Overview**
 - Copy your **Capture Token**
-- Paste it in `backend/.env`
 
-5. **Run the application**
+3. **Configure environment**
 ```bash
-# Terminal 1 - Backend
 cd backend
-npm start
-
-# Terminal 2 - Frontend
-cd frontend
-npm start
+cp .env.example .env
+# Edit .env and add your CAPTURE_TOKEN
 ```
 
-6. **Access the app**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3002
-- Health check: http://localhost:3002/health
-
----
-
-## 🧪 Testing the Demo
-
-### Quick Test Flow
-
-Run the automated test script:
-
+4. **Start the demo**
 ```bash
-chmod +x test-gpu-flow.sh
-./test-gpu-flow.sh
+cd /workspaces/computeproof-hackathon
+./start-demo.sh
 ```
 
 This will:
-1. Submit 2 GPU jobs (training + inference)
-2. Record lifecycle events (submit → start → complete)
-3. Generate transaction hashes
-4. Save results to `gpu-test-results.txt`
+- Install all dependencies automatically
+- Start backend API on http://localhost:3002
+- Build and serve frontend on http://localhost:8000
+- Connect to real Numbers Mainnet blockchain
+
+### Access the Dashboard
+
+Open your browser to:
+- **Dashboard**: http://localhost:8000
+- **API Health Check**: http://localhost:3002/health
+
+### Test the System
+
+```bash
+./test-complete-lifecycle.sh
+```
+
+Watch the dashboard update in real-time! Jobs will appear with blockchain transaction hashes.
+
+### Stop the Demo
+
+```bash
+./stop-demo.sh
+```
+
+---
+
+## 🧪 Testing the System
+
+### Complete Lifecycle Test
+
+Run a full GPU job lifecycle (all 5 events):
+
+```bash
+./test-complete-lifecycle.sh
+```
+
+This demonstrates:
+1. ✅ Job submission → Creates blockchain asset with NID
+2. ✅ Job scheduling → GPU node assignment
+3. ✅ Job started → Execution begins
+4. ✅ Progress update → 50% completion checkpoint
+5. ✅ Job completed → Final metrics and GPU hours
+
+**Each event creates a real blockchain transaction!**
+
+Example output:
+```
+╔════════════════════════════════════════════════════════╗
+║    GPU Job Receipt - Complete Lifecycle Test          ║
+║    Using Real Numbers Blockchain API                  ║
+╚════════════════════════════════════════════════════════╝
+
+[1/5] Submitting GPU training job...
+✓ Job submitted
+  Job ID: gpu-job-hackathon-1760641565
+  Job NID: bafkreihzui3unrkr43zbmm3bcun3usimslixoszi43qkdln6k36qvvut5a
+  TX Hash: 0x220f82df24da50e9b1ec2fc4c5c45cc16b08de05...
+  Asset URL: https://verify.numbersprotocol.io/asset-profile/bafkrei...
+
+[2/5] Scheduling job on GPU node...
+✓ Job scheduled
+  Node: gpu-node-05
+  TX Hash: 0x61c09f75a9e8eac59ee0cd56599668f8ad77f3fc...
+
+...
+
+✅ All events successfully recorded on Numbers blockchain!
+```
+
+### Complete Individual Job
+
+For jobs that are only submitted, complete their lifecycle:
+
+```bash
+./complete-job.sh <job_nid>
+
+# Or run without arguments to see available jobs
+./complete-job.sh
+```
+- Complete lifecycle: Submit → Schedule → Start → Progress (50%) → Complete
+- Final metrics: 4.23 GPU hours, $10.58 cost
+
+**Job 2: TensorFlow Inference Job**  
+- 2x NVIDIA A100 GPUs (40GB each)
+- Lifecycle: Submit → Start → Complete
+- Simulates GPU resource allocation failure scenario
 
 ### Manual Testing
 
@@ -176,11 +251,30 @@ This will:
 curl -X POST http://localhost:3002/api/jobs/submit \
   -H "Content-Type: application/json" \
   -d '{
-    "jobId": "gpu-job-2025-1001",
+    "jobId": "my-gpu-job-001",
     "jobType": "training",
+    "submittedBy": "0xYourAddress",
     "gpuRequirement": {
       "type": "NVIDIA-A100",
-      "count": 4
+      "count": 4,
+      "memory": "80GB"
+    },
+    "estimatedDuration": 3600,
+    "dockerImage": "pytorch/pytorch:2.0-cuda11.7",
+    "priority": "high"
+  }'
+```
+
+**Schedule the Job:**
+```bash
+curl -X POST http://localhost:3002/api/jobs/YOUR_NID/scheduled \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scheduledNode": "gpu-node-01",
+    "nodeSpecs": {
+      "gpuModel": "NVIDIA A100 80GB",
+      "cpuCores": 32,
+      "ramGB": 256
     }
   }'
 ```
@@ -189,7 +283,21 @@ curl -X POST http://localhost:3002/api/jobs/submit \
 ```bash
 curl -X POST http://localhost:3002/api/jobs/YOUR_NID/started \
   -H "Content-Type: application/json" \
-  -d '{"executorNode": "gpu-node-01"}'
+  -d '{
+    "executorNode": "gpu-node-01",
+    "containerId": "docker://abc123"
+  }'
+```
+
+**Update Progress:**
+```bash
+curl -X POST http://localhost:3002/api/jobs/YOUR_NID/progress \
+  -H "Content-Type: application/json" \
+  -d '{
+    "progress": 50,
+    "currentEpoch": 15,
+    "totalEpochs": 30
+  }'
 ```
 
 **Complete the Job:**
@@ -239,11 +347,204 @@ curl http://localhost:3002/api/jobs/YOUR_NID/history
 
 ---
 
+## � Dashboard Features
+
+The ComputeProof dashboard provides a comprehensive view of GPU job receipts:
+
+### Key Features:
+- **Real-time Job Monitoring** - Track all GPU jobs and their current status
+- **Event Timeline** - Visualize complete job lifecycle from submission to completion
+- **Cost Analytics** - Calculate GPU hours and associated costs
+- **Blockchain Verification** - Click any transaction hash to verify on Numbers Mainnet
+- **Job Details** - View GPU specs, executor nodes, and performance metrics
+- **Historical Data** - Browse past jobs and compare efficiency
+
+### Dashboard Tabs:
+1. **Dashboard** - Overview of all jobs with status indicators
+2. **Job Details** - Deep dive into individual job history and metrics
+3. **Analytics** - Aggregate statistics and cost analysis
+
+### Sample Data Included:
+The dashboard comes pre-loaded with sample GPU jobs to demonstrate the full functionality:
+- PyTorch training job with 4x A100 GPUs
+- TensorFlow inference job with 2x A100 GPUs
+- Complete event timelines with blockchain transaction hashes
+
+---
+
+## 📊 Dashboard Features
+
+The ComputeProof dashboard provides a beautiful, terminal-style view of GPU job execution:
+
+### Main Dashboard
+- **Job Cards** - Visual representation of each GPU job with:
+  - Status badges (Submitted, Scheduled, Running, Completed)
+  - GPU requirements (type, count, memory)
+  - Event count indicators
+  - Direct link to blockchain asset verification
+- **Real-time Updates** - Auto-refreshes every 10 seconds
+- **Manual Refresh** - Click the 🔄 button anytime
+- **Color-coded Status**:
+  - 🔵 Blue = Submitted
+  - 🟡 Yellow = Scheduled
+  - 🟢 Green = Running
+  - ✅ Green with checkmark = Completed
+
+### Terminal-Style Execution Log
+
+**Click any job card** to see a complete, terminal-style execution log:
+
+```
+╔════════════════════════════════════════════════════════╗
+║    GPU Job Receipt - Complete Lifecycle Log           ║
+╚════════════════════════════════════════════════════════╝
+
+[1/5] Submitting GPU training job...
+✓ Job submitted
+  Job ID: gpu-job-hackathon-1760641565
+  Job NID: bafkreihzui3unrkr43zbmm3bcun3usimslixoszi43qkdln6k36qvvut5a
+  Asset URL: https://verify.numbersprotocol.io/asset-profile/...
+
+[2/5] Scheduling job on GPU node...
+✓ Job Scheduled
+  Node: gpu-node-05
+  TX Hash: 0x61c09f75a9e8eac59ee0cd56599668f8ad77f3fc...
+
+...and so on through completion
+```
+
+### Modal Features
+- **Job Metadata** - ID, NID, GPU specs, status
+- **Step-by-step Log** - Shows each event with [n/total] format
+- **Clickable Transaction Hashes** - Every TX hash links to blockchain explorer
+- **Progress Tracking** - Shows epochs, percentages, durations
+- **Summary Section** - Complete list of all blockchain transactions
+- **Verification Links** - Direct links to Numbers Protocol and mainnet explorer
+
+---
+
+## 🌐 Deployment & Public Access
+
+### Local Deployment (Current Setup)
+```bash
+./start-demo.sh
+# Backend: http://localhost:3002
+# Frontend: http://localhost:8000
+```
+
+### Deploy to Vercel (Frontend)
+
+1. **Prepare frontend for deployment:**
+```bash
+cd frontend
+npm run build
+```
+
+2. **Deploy to Vercel:**
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Deploy
+vercel
+```
+
+3. **Configure environment:**
+In Vercel dashboard, add environment variable:
+- `VITE_API_URL` = your backend URL
+
+### Deploy Backend to Heroku/Railway
+
+**Option 1: Railway**
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Deploy backend
+cd backend
+railway login
+railway init
+railway up
+```
+
+**Option 2: Heroku**
+```bash
+# Create Procfile in backend/
+echo "web: node server.js" > backend/Procfile
+
+# Deploy
+cd backend
+heroku create computeproof-api
+heroku config:set MOCK_NUMBERS_API=true
+git push heroku main
+```
+
+### Environment Variables for Production
+
+**Backend:**
+- `PORT` - Server port (default: 3002)
+- `MOCK_NUMBERS_API` - Set to `true` for demo mode (no API token required)
+- `CAPTURE_TOKEN` - Your Numbers Protocol API token (production mode only)
+- `ASSET_FILE_BASE_URL` - URL where asset files are hosted
+
+**Frontend:**
+- `VITE_API_URL` - Backend API URL (e.g., https://your-api.railway.app)
+
+### Quick Deploy with Cloudflare Pages
+
+```bash
+# Frontend only - static deployment
+cd frontend
+npm run build
+
+# The dist/ folder can be deployed to:
+# - Vercel
+# - Netlify
+# - Cloudflare Pages
+# - GitHub Pages
+```
+
+---
+
 ## 🔗 Live Demo
 
-- **Demo Application:** [https://computeproof.vercel.app](https://computeproof.vercel.app)
-- **Demo Video:** [https://youtu.be/YOUR_VIDEO_ID](https://youtu.be/YOUR_VIDEO_ID)
-- **Sample Job:** [View on Numbers](https://verify.numbersprotocol.io/asset-profile/bafybei...)
+- **Frontend Dashboard:** http://localhost:3000 (local) or deploy to get public URL
+- **Backend API:** http://localhost:3002 (local) or deploy to get public URL  
+- **API Health Check:** http://localhost:3002/health
+- **Demo Video:** Record your screen showing the test flow!
+
+### Creating a Public Demo URL
+
+**Recommended approach for hackathon:**
+
+1. **Use ngrok for instant public URL:**
+```bash
+# Install ngrok
+brew install ngrok  # macOS
+# or download from https://ngrok.com
+
+# Start your demo
+./start-demo.sh
+
+# In another terminal, expose backend
+ngrok http 3002
+
+# And frontend
+ngrok http 3000
+
+# Share the ngrok URLs!
+```
+
+2. **Record a demo video:**
+```bash
+# Run the test
+./test-complete-lifecycle.sh
+
+# Screen record showing:
+# - Terminal output with transaction hashes
+# - Dashboard at localhost:8000
+# - Job details and event timeline
+```
 
 ---
 
