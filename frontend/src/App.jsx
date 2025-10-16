@@ -47,6 +47,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      // Provide actionable startup instructions when backend is unreachable
+      setDemoStatus(`❌ Could not reach the backend (${API_URL}).\n\nStart it locally:\n  cd backend\n  npm ci\n  npm run start:mock\n\nOr run the project demo script from repo root:\n  ./start-demo.sh\n\nVerify with:\n  curl http://localhost:3002/health`);
     }
     setLoading(false);
   };
@@ -68,6 +70,7 @@ function App() {
       }
     } catch (error) {
       console.error('❌ Error fetching job history:', error);
+      setDemoStatus(`❌ Could not reach the backend (${API_URL}).\n\nStart it locally:\n  cd backend\n  npm ci\n  npm run start:mock\n\nOr run the project demo script from repo root:\n  ./start-demo.sh\n\nVerify with:\n  curl http://localhost:3002/health`);
     }
     setLoading(false);
   };
