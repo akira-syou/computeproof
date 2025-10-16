@@ -183,7 +183,11 @@ function App() {
       setDemoRunning(false);
     } catch (error) {
       console.error('Demo error:', error);
-      setDemoStatus(`❌ Error: ${error.message}`);
+      // Show quickstart instructions when network/backend fetch fails
+      const instructions = `❌ Could not reach the backend (${API_URL}).\n\nTo start the backend locally, follow these steps:\n
+ Open a terminal and run:\n  cd backend\n  npm ci\n  # Start server in mock mode (no external API calls):\n  npm run start:mock\n\n+ Or use the provided demo script from project root:\n  ./start-demo.sh\n\nOnce the backend is running, try "Run Complete Demo" again.\n\nYou can verify the backend with:\n  curl http://localhost:3002/health\n`;
+
+      setDemoStatus(instructions);
       setDemoRunning(false);
     }
   };
@@ -300,17 +304,19 @@ function App() {
               </div>
               
               {demoStatus && (
-                <div className={`mt-3 p-3 rounded-lg flex items-start space-x-2 ${
-                  demoStatus.includes('❌') 
+                <div className={`mt-3 p-3 rounded-lg ${
+                  demoStatus.startsWith('❌') 
                     ? 'bg-red-900 bg-opacity-50 border border-red-500' 
-                    : demoStatus.includes('✅')
+                    : demoStatus.startsWith('✅')
                     ? 'bg-green-900 bg-opacity-50 border border-green-500'
                     : 'bg-blue-900 bg-opacity-50 border border-blue-500'
                 }`}>
-                  {demoRunning && <RefreshCw className="w-4 h-4 animate-spin mt-0.5" />}
-                  {demoStatus.includes('❌') && <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />}
-                  {demoStatus.includes('✅') && <CheckCircle className="w-4 h-4 text-green-400 mt-0.5" />}
-                  <span className="text-sm font-mono">{demoStatus}</span>
+                  <div className="flex items-start space-x-2">
+                    {demoRunning && <RefreshCw className="w-4 h-4 animate-spin mt-0.5" />}
+                    {demoStatus.startsWith('❌') && <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />}
+                    {demoStatus.startsWith('✅') && <CheckCircle className="w-4 h-4 text-green-400 mt-0.5" />}
+                    <div className="text-sm font-mono whitespace-pre-wrap">{demoStatus}</div>
+                  </div>
                 </div>
               )}
             </div>
