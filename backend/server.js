@@ -4,7 +4,16 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
-const fetch = require('node-fetch');
+// Prefer native fetch (Node 18+). If not available, load node-fetch and
+// handle ESM default export compatibility.
+let fetch;
+if (typeof globalThis.fetch === 'function') {
+  fetch = globalThis.fetch.bind(globalThis);
+} else {
+  // node-fetch v3 is ESM and exposes the fetch function as the default export
+  const _nf = require('node-fetch');
+  fetch = _nf.default || _nf;
+}
 
 const app = express();
 app.use(cors());
@@ -17,6 +26,16 @@ const CONFIG = {
   COMMIT_API: 'https://us-central1-numbers-protocol-api.cloudfunctions.net/nit-commit-to-jade'
 };
 
+// Base URL to use for mock asset files when registering with Numbers API.
+// This should be a valid HTTPS URL. You can override with env var
+// ASSET_FILE_BASE_URL. Default points to example.com for mock-up data.
+CONFIG.ASSET_FILE_BASE_URL = process.env.ASSET_FILE_BASE_URL || 'https://example.com/assets';
+
+// Local mock mode: when true, the server will not call external Numbers APIs
+// and will instead return synthetic NIDs and transaction hashes. This is
+// useful for offline testing. Enable by setting MOCK_NUMBERS_API=true.
+const MOCK = (process.env.MOCK_NUMBERS_API === 'true');
+
 // Helper: Generate SHA256 hash
 function generateSHA256(data) {
   return crypto
@@ -27,6 +46,14 @@ function generateSHA256(data) {
 
 // Helper: Commit event to blockchain
 async function commitEvent(jobNid, eventData, commitMessage) {
+  if (MOCK) {
+    // Return a fake commit result
+    return {
+      success: true,
+      txHash: `0xMOCK_TX_${eventData.eventType}_${Math.random().toString(36).substring(2,10)}`
+    };
+  }
+
   const response = await fetch(CONFIG.COMMIT_API, {
     method: 'POST',
     headers: {
@@ -80,15 +107,21 @@ app.post('/api/jobs/submit', async (req, res) => {
       timestamp: Math.floor(Date.now() / 1000)
     };
 
-    // Register job as asset
-    const response = await fetch(`${CONFIG.API_BASE}/assets/`, {
+    // Register job as asset. Use a valid HTTPS asset_file URL pointing to
+    // mock-up data so the Numbers API validation accepts it. The actual
+    // content can be stored externally; for testing we provide a placeholder
+    // URL built from CONFIG.ASSET_FILE_BASE_URL.
+  const assetFileUrl = `${CONFIG.ASSET_FILE_BASE_URL}/${encodeURIComponent(jobId)}.json`;
+  console.log(`Registering asset with asset_file URL: ${assetFileUrl}`);
+
+  const response = await fetch(`${CONFIG.API_BASE}/assets/`, {
       method: 'POST',
       headers: {
         'Authorization': `token ${CONFIG.CAPTURE_TOKEN}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        asset_file: `data:application/json;base64,${Buffer.from(JSON.stringify(jobData)).toString('base64')}`,
+        asset_file: assetFileUrl,
         abstract: `GPU Job: ${jobId}`,
         custom_fields: jobData
       })
@@ -479,5 +512,6 @@ const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`ComputeProof API running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`ASSET_FILE_BASE_URL: ${CONFIG.ASSET_FILE_BASE_URL}`);
   console.log(`Ready to process GPU job receipts!`);
 });
