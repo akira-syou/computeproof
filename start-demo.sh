@@ -17,18 +17,49 @@ echo -e "${BLUE}║       ComputeProof Hackathon Demo - Starting...       ║${N
 echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Check if node_modules exists in backend
+# Ensure backend directory exists
+if [ ! -d "backend" ]; then
+    echo -e "${YELLOW}Error: 'backend' directory not found in the current working directory.${NC}"
+    echo "Please run this script from the repository root (where 'backend' and 'frontend' folders live)."
+    exit 1
+fi
+
+# Check if node_modules exists in backend and install if missing
 if [ ! -d "backend/node_modules" ]; then
     echo -e "${YELLOW}Installing backend dependencies...${NC}"
-    cd backend && npm install && cd ..
+    cd backend
+    if ! npm install; then
+        echo -e "${YELLOW}npm install failed for backend. This is likely a network or proxy issue.${NC}"
+        echo "Try running 'npm install' or 'npm ci' inside the backend folder manually and check your network/proxy settings."
+        echo "If you are behind a proxy, configure npm proxy settings: 'npm config set proxy <url>' and 'npm config set https-proxy <url>'"
+        exit 1
+    fi
+    cd ..
     echo -e "${GREEN}✓ Backend dependencies installed${NC}"
     echo ""
 fi
 
-# Check if node_modules exists in frontend
+# Ensure frontend directory exists
+if [ ! -d "frontend" ]; then
+    echo -e "${YELLOW}Error: 'frontend' directory not found in the current working directory.${NC}"
+    echo "Please run this script from the repository root (where 'backend' and 'frontend' folders live)."
+    exit 1
+fi
+
+# Check if node_modules exists in frontend and install if missing
 if [ ! -d "frontend/node_modules" ]; then
     echo -e "${YELLOW}Installing frontend dependencies...${NC}"
-    cd frontend && npm install && cd ..
+    cd frontend
+    if ! npm install; then
+        echo -e "${YELLOW}npm install failed for frontend. This is likely a network or proxy issue.${NC}"
+        echo "You can try:"
+        echo "  cd frontend"
+        echo "  npm ci                # clean install from package-lock.json"
+        echo "  npm install --verbose # see detailed network errors"
+        echo "If you are behind a proxy, configure npm via 'npm config set proxy <url>' and 'npm config set https-proxy <url>'"
+        exit 1
+    fi
+    cd ..
     echo -e "${GREEN}✓ Frontend dependencies installed${NC}"
     echo ""
 fi
